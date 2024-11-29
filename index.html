@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+  <meta charset="utf-8">
+
+  <!-- Include the CesiumJS JavaScript and CSS files -->
+
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.112/Build/Cesium/Cesium.js"></script>
+
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.112/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+
+  <link rel="stylesheet" href="https://cesiumjs.org/Cesium/Build/Apps/Sandcastle/templates/bucket.css">
+  <script src = "https://sandcastle.cesium.com/Sandcastle-header.js"></script>
+
+  <style type="text/css">
+    #toggle-fpv { z-index: 1; position: fixed; top: 5px; left: 5px; }
+  </style>
+
+</head>
+
+<body>
+
+  <div id="cesiumContainer"></div>
+  <button id="toggle-fpv">W untuk Maju <br> S untuk Mundur <br> A untuk Kiri <br>D untuk Kanan <br>Q untuk Atas/Naik <br>E untuk Bawah/Turun <br></button>
+  <script type="module">
+
+     // Replace number below with buildingID of your uploaded model on cesium ion at: https://ion.cesium.com/assets
+     const buildingID=  2882500;
+     const buildingID2= 2389000;
+    // Your access token can be found at: https://ion.cesium.com/tokens.
+    // Replace `your_access_token` with your Cesium ion access token.
+
+    Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJlYzQ1Njc3Yy1kM2Q2LTQ1MjItYWUxNy1mOTJhZmI1YjdlMTkiLCJpZCI6MTgzNDAwLCJpYXQiOjE3MDIwODEzMTB9.HX0yAAecV9qEzMxDQEa3mVj8NJi6VZInKYqeH9M8xxY';
+
+    // Initialize the Cesium Viewer in the HTML element with the `cesiumContainer` ID.
+    const viewer = new Cesium.Viewer('cesiumContainer', {
+      terrain: Cesium.Terrain.fromWorldTerrain(),
+    });    
+
+    // Add the 3D Tileset you created from your Cesium ion account.
+    const newBuildingTileset = await Cesium.Cesium3DTileset.fromIonAssetId(buildingID);
+    viewer.scene.primitives.add(newBuildingTileset);
+
+    // Add the 3D Tileset you created from your Cesium ion account.
+    const newBuildingTileset2 = await Cesium.Cesium3DTileset.fromIonAssetId(buildingID2);
+    viewer.scene.primitives.add(newBuildingTileset2);
+
+    // Add Cesium OSM Buildings.
+    const buildingsTileset = await Cesium.createOsmBuildingsAsync();
+    viewer.scene.primitives.add(buildingsTileset);
+
+    // Fly the camera to Denver, Colorado at the given longitude, latitude, and height.
+    viewer.camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(110.37759058476837, -7.771627893753711, 400) 
+    });
+
+    // First Person View Camera--------------------------------------------------------------------------
+    const scene = viewer.scene;
+    const canvas = viewer.canvas;
+    canvas.setAttribute("tabindex", "0"); // needed to put focus on the canvas
+    canvas.onclick = function () {
+      canvas.focus();
+    };
+    const ellipsoid = scene.globe.ellipsoid;    
+
+    // disable the default event handlers
+    scene.screenSpaceCameraController.enableRotate = false;
+    scene.screenSpaceCameraController.enableTranslate = false;
+    scene.screenSpaceCameraController.enableZoom = false;
+    scene.screenSpaceCameraController.enableTilt = false;
+    scene.screenSpaceCameraController.enableLook = false;
+
+    let startMousePosition;
+    let mousePosition;
+    const flags = {
+      looking: false,
+      moveForward: false,
+      moveBackward: false,
+      moveUp: false,
+      moveDown: false,
+      moveLeft: false,
+      moveRight: false,
+    };
+
+    const handler = new Cesium.ScreenSpaceEventHandler(canvas);
+
+    handler.setInputAction(function (movement) {
+      flags.looking = true;
+      mousePosition = startMousePosition = Cesium.Cartesian3.clone(
+        movement.position
+      );
+    }, Cesium.ScreenSpaceEventType.LEFT_DOWN);
+
+    handler.setInputAction(function (movement) {
+      mousePosition = movement.endPosition;
+    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+    handler.setInputAction(function (position) {
+      flags.looking = false;
+    }, Cesium.ScreenSpaceEventType.LEFT_UP);
+
+    function getFlagForKeyCode(keyCode) {
+      switch (keyCode) {
+        case "W".charCodeAt(0):
+          return "moveForward";
+        case "S".charCodeAt(0):
+          return "moveBackward";
+        case "Q".charCodeAt(0):
+          return "moveUp";
+        case "E".charCodeAt(0):
+          return "moveDown";
+        case "D".charCodeAt(0):
+          return "moveRight";
+        case "A".charCodeAt(0):
+          return "moveLeft";
+        default:
+          return undefined;
+      }
+    }
+
+    document.addEventListener(
+      "keydown",
+      function (e) {
+        const flagName = getFlagForKeyCode(e.keyCode);
+        if (typeof flagName !== "undefined") {
+          flags[flagName] = true;
+        }
+      },
+      false
+    );
+
+    document.addEventListener(
+      "keyup",
+      function (e) {
+        const flagName = getFlagForKeyCode(e.keyCode);
+        if (typeof flagName !== "undefined") {
+          flags[flagName] = false;
+        }
+      },
+      false
+    );
+
+    viewer.clock.onTick.addEventListener(function (clock) {
+      const camera = viewer.camera;
+
+      if (flags.looking) {
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+
+        // Coordinate (0.0, 0.0) will be where the mouse was clicked.
+        const x = (mousePosition.x - startMousePosition.x) / width;
+        const y = -(mousePosition.y - startMousePosition.y) / height;
+
+        const lookFactor = 0.05;
+        camera.lookRight(x * lookFactor);
+        camera.lookUp(y * lookFactor);
+      }
+
+      // Change movement speed based on the distance of the camera to the surface of the ellipsoid.
+      const cameraHeight = ellipsoid.cartesianToCartographic(
+        camera.position
+      ).height;
+      const moveRate = cameraHeight / 100.0;
+
+      if (flags.moveForward) {
+        camera.moveForward(moveRate);
+      }
+      if (flags.moveBackward) {
+        camera.moveBackward(moveRate);
+      }
+      if (flags.moveUp) {
+        camera.moveUp(moveRate);
+      }
+      if (flags.moveDown) {
+        camera.moveDown(moveRate);
+      }
+      if (flags.moveLeft) {
+        camera.moveLeft(moveRate);
+      }
+      if (flags.moveRight) {
+        camera.moveRight(moveRate);
+      }
+    });
+
+      
+      </script>
+
+    </div>
+
+</body>
+
+</html>
